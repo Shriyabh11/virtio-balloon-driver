@@ -57,3 +57,5 @@
 ## Current Scope Note
 This protocol is active in the current host daemon path and documented as the authoritative contract for Phase B cleanup.
 
+In the current `shm_agent` MVP implementation, `actual_bytes` is used as bridge-reported shared-memory state and is set equal to `target_bytes` when a command is acknowledged. The authoritative live balloon size is still obtained through QMP `query-balloon`.
+

@@ -15,7 +15,7 @@ The core infrastructure for the virtio memory balloon driver and the host-side c
    - Supports both interactive (terminal) and non-interactive (scripting) modes
 3. **Guest Bridge Agent (`guest/shm_agent`)**
    - Maps shared memory via ivshmem PCI BAR
-   - Detects new command sequences and acknowledges them
+   - Detects new command sequences, mirrors `target_bytes` into `actual_bytes`, and acknowledges them
 4. **Automation Scripts**
    - Full QEMU launch and end-to-end smoke testing suite
 

@@ -69,7 +69,7 @@ A custom Linux kernel module that acts as the virtio balloon device driver.
 A userspace bridge that completes the shared-memory contract.
 - Maps the `ivshmem` PCI BAR.
 - Monitors `cmd_seq` changes.
-- Acknowledges command completion by updating `ack_seq` and reporting `actual_bytes`.
+- Acknowledges command completion by mirroring `target_bytes` into `actual_bytes` and updating `ack_seq`.
 
 ## Data Flow & State Machine
 
@@ -77,7 +77,9 @@ A userspace bridge that completes the shared-memory contract.
 2. **Hypervisor Signaling:** Host sends the `balloon` command over QMP.
 3. **Guest Processing:** The guest driver reads the target from virtio config space and calculates the delta.
 4. **Action:** The guest driver schedules worker threads to inflate or deflate.
-5. **Acknowledgement:** The guest agent reads the new `cmd_seq`, updates `actual_bytes`, and sets `ack_seq = cmd_seq`.
+5. **Acknowledgement:** The guest agent reads the new `cmd_seq`, mirrors `target_bytes` into `actual_bytes` for bridge validation, and sets `ack_seq = cmd_seq`.
+
+The host daemon's QMP `query-balloon` polling remains the authoritative source for the live balloon `actual` value today.
 
 ## Future Architecture Plans
 Currently, the shared memory handling in the guest is split between kernel space (for actual memory allocation) and user space (`shm_agent` for protocol acknowledgment). The ultimate architectural goal is to unify this by bringing the `ivshmem` BAR mapping directly into the `vballoon_lab` kernel module.

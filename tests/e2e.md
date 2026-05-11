@@ -21,7 +21,7 @@ Host daemon + shared memory + guest agent command/ack flow.
 Shared-memory control loop is working:
 - host writes command
 - guest acknowledges
-- actual follows target in both directions
+- bridge-reported `actual_bytes` follows target in both directions
 
 ## Note
 This is Phase 2 MVP bridge behavior using `guest/shm_agent`.

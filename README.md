@@ -108,7 +108,6 @@ A Linux kernel module that dynamically inflates and deflates virtual machine mem
 ├── tests/
 │   └── e2e.md                 # End-to-end test results
 ├── DESIGN.md                  # Comprehensive technical documentation
-├── CONTRIBUTING.md            # Contribution guidelines
 └── LICENSE                    # GPL-2.0 (kernel module requirement)
 ```
 
@@ -156,7 +155,7 @@ sudo insmod ./vballoon_lab.ko pressure_enable=1 pressure_min_free_mb=128
 ./scripts/smoke_phase2.sh
 ```
 
-Expected output includes `BEGIN INFLATE LOG`, `BEGIN DEFLATE LOG`, and `smoke_phase2: completed (real QMP path)`.
+Expected output includes `BEGIN INFLATE LOG`, `BEGIN DEFLATE LOG`, and `smoke test: completed (real QMP path)`.
 
 For detailed setup instructions, see [docs/QEMU_TEST_GUIDE.md](docs/QEMU_TEST_GUIDE.md).
 
@@ -195,10 +194,12 @@ The host and guest communicate through a structured shared-memory region with st
 |-------|-------|---------|
 | `target_bytes` | Host | Desired balloon size |
 | `cmd_seq` | Host | Command sequence number |
-| `actual_bytes` | Guest | Current balloon size |
+| `actual_bytes` | Guest | Bridge-reported shared-memory state (currently mirrored from `target_bytes` by `shm_agent`) |
 | `ack_seq` | Guest | Last processed command |
 | `status` | Guest | Processing result |
 | `last_error` | Guest | Error code (errno-style) |
+
+Current MVP note: `shm_agent` acknowledges a command by mirroring `target_bytes` into `actual_bytes` and then setting `ack_seq = cmd_seq`. Authoritative balloon telemetry still comes from QMP `query-balloon`, which the host daemon logs as `actual`.
 
 Command lifecycle: host increments `cmd_seq` → guest processes → guest sets `ack_seq = cmd_seq`. See [docs/PROTOCOL.md](docs/PROTOCOL.md) for the full specification.
 
