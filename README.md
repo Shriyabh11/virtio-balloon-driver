@@ -1,147 +1,220 @@
-# Memory Balloon Driver (virtio-style) - Final Project README
+# virtio-balloon — Dynamic VM Memory Ballooning with Shared-Memory Control
 
-This repository implements a virtio-style memory balloon project with host-side control, guest-side ballooning, shared-memory command contract, and pressure-triggered behavior.
+A Linux kernel module that dynamically inflates and deflates virtual machine memory via the virtio balloon interface, coordinated by a host-side daemon through a shared-memory command protocol over ivshmem.
 
-Comprehensive documentation:
-- [PROJECT_DOCUMENTATION.md](PROJECT_DOCUMENTATION.md)
+## Architecture
 
-## 0) Folder Name Requirement
-
-Most scripts assume the project is located at:
-
-```bash
-~/virtio-balloon
+```
+┌──────────────────────────────────────────────────────┐
+│                     HOST                             │
+│                                                      │
+│  ┌──────────────┐    QMP (unix socket)   ┌────────┐  │
+│  │  balloond     │──────────────────────▶│  QEMU  │  │
+│  │  (host daemon)│                       │        │  │
+│  └──────┬───────┘                        └───┬────┘  │
+│         │                                    │       │
+│         │  shared memory                     │virtio │
+│         │  (/dev/shm or ivshmem)             │config │
+│         │                                    │       │
+│  ┌──────▼───────┐                        ┌───▼────┐  │
+│  │  cmd_seq ++   │                       │balloon │  │
+│  │  target_bytes │                       │device  │  │
+│  └──────┬───────┘                        └───┬────┘  │
+│         │                                    │       │
+├─────────┼────────────────────────────────────┼───────┤
+│         │           GUEST VM                 │       │
+│         │                                    │       │
+│  ┌──────▼───────┐                        ┌───▼────┐  │
+│  │  shm_agent    │                       │vballoon│  │
+│  │  (userspace   │                       │_lab.ko │  │
+│  │   bridge)     │                       │(kernel)│  │
+│  │  ack_seq =    │                       │        │  │
+│  │  cmd_seq      │                       │inflate │  │
+│  └──────────────┘                        │deflate │  │
+│                                          │pressure│  │
+│                                          └────────┘  │
+└──────────────────────────────────────────────────────┘
 ```
 
-If you clone from GitHub, use one of these:
+**Data flow:**
+1. Host daemon publishes `target_bytes` + increments `cmd_seq` in shared memory
+2. Host daemon sends QMP `balloon` command to QEMU
+3. QEMU propagates target to guest via virtio balloon config
+4. Guest kernel module adjusts balloon size using `alloc_page()` / `__free_page()`
+5. Guest userspace agent acknowledges command via `ack_seq` in shared memory
+6. Under memory pressure, guest driver autonomously deflates to protect VM stability
 
-```bash
-# clone directly into expected path
-cd ~
-git clone https://github.com/md25052007/Memory-balloon-driver.git virtio-balloon
+## Features
 
-# OR rename after clone
-cd ~
-git clone https://github.com/md25052007/Memory-balloon-driver.git
-mv Memory-balloon-driver virtio-balloon
+- ✅ **Kernel-level balloon driver** — real virtio driver using `alloc_page()` / `__free_page()` with virtqueue I/O
+- ✅ **Host daemon with QMP control** — sends `balloon` and `query-balloon` commands over UNIX socket
+- ✅ **Shared-memory protocol** — structured command/ack contract with sequence numbers and ownership discipline
+- ✅ **ivshmem transport** — bidirectional host↔guest communication over PCI BAR-mapped shared memory
+- ✅ **Memory pressure detection** — guest-side free-memory threshold triggers autonomous deflation
+- ✅ **Replay-safe publishing** — duplicate command suppression when target is unchanged
+- ✅ **Auto-detection** — guest agent auto-discovers ivshmem PCI device by vendor/device ID
+- ✅ **GPU workload simulator** — warp execution model with branch divergence and memory coalescing analysis
+- ✅ **CPU pressure generator** — configurable memory allocation tasks that trigger balloon responses
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Guest kernel module | C, Linux kernel API, virtio, virtqueues |
+| Host daemon | C (POSIX), QMP JSON protocol, `mmap` shared memory |
+| Shared memory transport | QEMU ivshmem-plain, PCI BAR mapping |
+| VM hypervisor | QEMU with TCG/KVM acceleration |
+| Guest OS | Ubuntu 24.04 Server (cloud image) |
+| Build system | Make, kbuild (kernel module) |
+
+## Project Structure
+
+```
+├── guest/
+│   ├── vballoon_lab/          # Linux kernel balloon driver module
+│   │   ├── vballoon_lab.c     # Driver: inflate/deflate, virtqueues, pressure logic
+│   │   └── Makefile           # kbuild out-of-tree module build
+│   └── shm_agent/             # Userspace shared-memory bridge
+│       ├── main.c             # ivshmem PCI auto-detect, BAR mmap, ack loop
+│       ├── include/protocol.h # Shared protocol struct definition
+│       └── Makefile
+│   └── workload_sim/          # CPU + GPU workload simulator
+│       ├── workload_sim.c     # Warp divergence, coalescing, memory pressure
+│       └── Makefile
+├── host/
+│   └── balloond/              # Host-side balloon control daemon
+│       ├── src/
+│       │   ├── main.c         # Daemon loop, target publishing, telemetry
+│       │   ├── shm.c          # Shared memory setup and mapping
+│       │   ├── qmp.c          # QMP socket client (balloon + query-balloon)
+│       │   └── log.c          # Timestamped structured logging
+│       ├── include/
+│       │   ├── protocol.h     # Protocol struct + constants (magic, version)
+│       │   ├── qmp.h          # QMP client API
+│       │   └── log.h          # Logging API
+│       └── Makefile
+├── scripts/
+│   ├── run_qemu_phase2.sh     # Launch QEMU with virtio-balloon + QMP
+│   ├── run_qemu_phase3_ivshmem.sh  # Launch QEMU with ivshmem device
+│   ├── smoke_phase2.sh        # Automated inflate/deflate smoke test
+│   └── start_balloond.sh      # Quick daemon launcher
+├── docs/
+│   ├── ARCHITECTURE.md        # System architecture and design decisions
+│   ├── PROTOCOL.md            # Shared-memory protocol specification
+│   ├── ROADMAP.md             # Future work and planned extensions
+│   ├── STATUS.md              # Development log and validation results
+│   └── QEMU_TEST_GUIDE.md     # Step-by-step VM setup and test guide
+├── proofs/                    # Captured validation logs
+├── tests/
+│   └── e2e.md                 # End-to-end test results
+├── DESIGN.md                  # Comprehensive technical documentation
+├── CONTRIBUTING.md            # Contribution guidelines
+└── LICENSE                    # GPL-2.0 (kernel module requirement)
 ```
 
-## 1) Project Goal
+## Quick Start
 
-Problem statement target:
-- Dynamically **inflate/deflate** memory available to a VM.
-- Reclaim guest pages on inflate (`alloc_page()` path).
-- Return guest pages on deflate (`__free_page()` path).
-- Communicate with host daemon through shared-memory contract.
-- Demonstrate VM memory pressure behavior.
+### Prerequisites
 
-## 2) What Is Implemented
+- Linux host (Ubuntu 24.04+ recommended)
+- QEMU with TCG or KVM support
+- Build tools: `gcc`, `make`, `linux-headers`
 
-### A. Guest kernel balloon driver (`guest/vballoon_lab/vballoon_lab.c`)
-- Registers as a `virtio_balloon`-ID driver.
-- Maintains ballooned page lists and inflight queues.
-- Inflates by allocating pages and publishing PFNs to virtqueue.
-- Deflates by freeing ballooned pages back to guest.
-- Exposes pressure controls as module params:
-  - `pressure_enable`
-  - `pressure_min_free_mb`
-  - `pressure_log_interval_ms`
+```bash
+sudo apt install -y qemu-system-x86 qemu-utils cloud-image-utils \
+  build-essential socat
+```
 
-### B. Host daemon (`host/balloond`)
-- Publishes target memory command (`target_bytes`, `cmd_seq`) in shared memory.
-- Sends balloon target to QEMU via real QMP `balloon` command.
-- Polls QMP `query-balloon` for actual bytes.
-- Emits runtime telemetry including:
-  - `actual`, `target`, `cmd_seq`, `ack_seq`, `shm_status`, `shm_err`, `qmp_err`.
+### 1. Set Up VM Image
 
-### C. Shared-memory protocol contract
-- Protocol in [docs/PROTOCOL.md](docs/PROTOCOL.md)
-- Fields:
-  - `magic`, `version`, `target_bytes`, `actual_bytes`, `cmd_seq`, `ack_seq`, `status`, `last_error`
-- Strict ownership:
-  - host writes `target_bytes`, `cmd_seq`
-  - guest side writes `actual_bytes`, `ack_seq`, `status`, `last_error`
+```bash
+cd images/
+wget -O ubuntu-24.04-server-cloudimg-amd64.img \
+  https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+qemu-img resize ubuntu-24.04-server-cloudimg-amd64.img +20G
+cloud-localds seed.iso user-data meta-data
+```
 
-### D. Shared-memory transport proof
-- ivshmem transport validated with host->guest and guest->host marker exchange.
-- guest `shm_agent` now auto-detects ivshmem PCI function by vendor/device ID (`1af4:1110`), so it is portable across machines with different PCI BDF assignments.
-- Proof file: [proofs/phaseC_ivshmem_transport_ok.log](proofs/phaseC_ivshmem_transport_ok.log)
+### 2. Start QEMU
 
-### E. Pressure behavior proof
-- Pressure-triggered deflate observed repeatedly in guest `dmesg`.
-- Proof file: [proofs/phaseD_pressure_dmesg_fresh.log](proofs/phaseD_pressure_dmesg_fresh.log)
+```bash
+./scripts/run_qemu_phase3_ivshmem.sh
+```
 
-## 3) Key Observed Outputs (from proofs)
+### 3. Build and Load Kernel Module (in guest)
 
-### Inflate convergence (3 GiB -> 2 GiB)
-From [proofs/phase2_qmp_inflate_ok.log](proofs/phase2_qmp_inflate_ok.log):
-- starts around `actual=3221225472`
-- converges to `actual=2147483648 target=2147483648`
-- `ack_seq` catches up to `cmd_seq`
+```bash
+ssh -p 2222 ubuntu@127.0.0.1  # password: ubuntu
+cd ~/virtio-balloon/guest/vballoon_lab
+make -j$(nproc)
+sudo insmod ./vballoon_lab.ko pressure_enable=1 pressure_min_free_mb=128
+```
 
-### Deflate convergence (2 GiB -> 3 GiB)
-From [proofs/phase2_qmp_deflate_ok.log](proofs/phase2_qmp_deflate_ok.log):
-- starts around `actual=2147483648 target=3221225472`
-- converges to `actual=3221225472 target=3221225472`
-- `ack_seq` catches up to `cmd_seq`
+### 4. Run Smoke Test (on host)
 
-### Replay/no-op guard
-From [proofs/phaseB_replay_guard.log](proofs/phaseB_replay_guard.log):
-- `target unchanged and no pending cmd ..., skipping publish`
-- confirms duplicate publish suppression.
+```bash
+./scripts/smoke_phase2.sh
+```
 
-### Full smoke with both sections
-From [proofs/phase3_pressure_run.log](proofs/phase3_pressure_run.log):
-- contains `BEGIN INFLATE LOG`
-- contains `BEGIN DEFLATE LOG`
-- ends with `smoke_phase2: completed (real QMP path)`
+Expected output includes `BEGIN INFLATE LOG`, `BEGIN DEFLATE LOG`, and `smoke_phase2: completed (real QMP path)`.
 
-## 4) Repository Layout
+For detailed setup instructions, see [docs/QEMU_TEST_GUIDE.md](docs/QEMU_TEST_GUIDE.md).
 
-- Host daemon code: [host/balloond/src/main.c](host/balloond/src/main.c), [host/balloond/src/shm.c](host/balloond/src/shm.c), [host/balloond/src/qmp.c](host/balloond/src/qmp.c)
-- Guest kernel module: [guest/vballoon_lab/vballoon_lab.c](guest/vballoon_lab/vballoon_lab.c)
-- Guest shared-memory agent (bridge): [guest/shm_agent/main.c](guest/shm_agent/main.c)
-- QEMU scripts:
-  - [scripts/run_qemu_phase2.sh](scripts/run_qemu_phase2.sh)
-  - [scripts/run_qemu_phase3_ivshmem.sh](scripts/run_qemu_phase3_ivshmem.sh)
-- Smoke script: [scripts/smoke_phase2.sh](scripts/smoke_phase2.sh)
-- Demo runbook: [DEMO_DOCUMENTATION.md](DEMO_DOCUMENTATION.md)
+## How It Works
 
-## 5) Fast Demo Flow
+### Balloon Inflate (Reclaim Guest Memory)
 
-Use the demo runbook directly:
-- [DEMO_DOCUMENTATION.md](DEMO_DOCUMENTATION.md)
+1. Host sets lower memory target via QMP
+2. Kernel module calls `alloc_page(GFP_HIGHUSER | __GFP_NORETRY)` to capture guest pages
+3. Page frame numbers are published to the inflate virtqueue
+4. On completion callback, pages move to the ballooned list
+5. Guest reports updated `actual` pages to QEMU
 
-Short version:
-1. Start VM: `./scripts/run_qemu_phase3_ivshmem.sh`
-2. Build/load guest module and bind to `virtio0`.
-3. Build/start guest `shm_agent` and confirm it is running.
-4. Run contract logs (`phaseC_ivshmem_contract_run*.log`) and verify `ack_seq` catches up.
-5. Temporarily disable pressure and run smoke: `./scripts/smoke_phase2.sh 2>&1 | tee proofs/phase3_pressure_run.log`.
-6. Re-enable pressure and capture pressure-deflate evidence.
+### Balloon Deflate (Return Memory to Guest)
 
-## 6) Current Gaps / Future Work
+1. Host sets higher memory target via QMP
+2. Kernel module pops pages from the ballooned list
+3. Pages are returned via `__free_page()` — memory becomes available to guest again
+4. Guest reports updated `actual` pages
 
-The project is strong for demo scope, but one major advanced integration remains:
-- shared-memory control is still bridged through guest userspace `shm_agent`; kernel-direct shared-memory control integration is future work.
+### Pressure-Driven Deflation
 
-Also possible improvements:
-- add a dedicated host policy module for adaptive targeting and bounds
-- deeper kernel pressure hooks beyond threshold mode
-- stronger restart/recovery automation
+When guest free memory drops below a configurable threshold (`pressure_min_free_mb`), the driver **overrides the host target** and deflates to protect VM stability. This is a safety mechanism — the guest prioritizes its own health over the host's ballooning request.
 
-## 7) Final Status
+```
+# Runtime-tunable via sysfs
+echo 1 | sudo tee /sys/module/vballoon_lab/parameters/pressure_enable
+echo 512 | sudo tee /sys/module/vballoon_lab/parameters/pressure_min_free_mb
+```
 
-- Dynamic inflate/deflate: **done**
-- QMP-controlled host daemon path: **done**
-- Shared-memory command/ack contract: **done**
-- ivshmem transport proof: **done**
-- Pressure-triggered deflate proof: **done**
-- Kernel-direct shared-memory integration: **not yet done (explicitly documented)**
+### Shared-Memory Protocol
 
-For submission context details, see:
-- [docs/STATUS.md](docs/STATUS.md)
-- [docs/PROTOCOL.md](docs/PROTOCOL.md)
+The host and guest communicate through a structured shared-memory region with strict field ownership:
 
+| Field | Owner | Purpose |
+|-------|-------|---------|
+| `target_bytes` | Host | Desired balloon size |
+| `cmd_seq` | Host | Command sequence number |
+| `actual_bytes` | Guest | Current balloon size |
+| `ack_seq` | Guest | Last processed command |
+| `status` | Guest | Processing result |
+| `last_error` | Guest | Error code (errno-style) |
 
+Command lifecycle: host increments `cmd_seq` → guest processes → guest sets `ack_seq = cmd_seq`. See [docs/PROTOCOL.md](docs/PROTOCOL.md) for the full specification.
 
+## Validation
+
+All validation logs are captured in `proofs/`:
+
+| Test | Log File | What It Proves |
+|------|----------|----------------|
+| Inflate convergence (3→2 GiB) | `inflate_convergence.log` | `actual` reaches target, `ack_seq` catches up |
+| Deflate convergence (2→3 GiB) | `deflate_convergence.log` | Reverse transition, full convergence |
+| Full smoke (inflate + deflate) | `full_smoke_run.log` | End-to-end round trip in one run |
+| Replay guard (no-op) | `replay_guard_noop.log` | Duplicate publish suppression works |
+| ivshmem transport | `ivshmem_transport_proof.log` | Bidirectional host↔guest marker exchange |
+| Pressure deflation | `pressure_deflate_dmesg.log` | `dmesg` shows pressure-triggered deflate |
+
+## License
+
+This project is licensed under the [GNU General Public License v2.0](LICENSE) — required for Linux kernel modules.

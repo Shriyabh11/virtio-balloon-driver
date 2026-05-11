@@ -1,39 +1,30 @@
-# Roadmap
+# Feature Roadmap
 
-## Goal
-Move from the current shared-memory MVP bridge to a production-style integration aligned with virtio balloon design goals.
+This document outlines the planned technical evolution for the `virtio-balloon` project. The focus is on moving from a functional prototype to a robust, kernel-integrated control plane suitable for production-like environments.
 
-## Work Items
+## Phase 1: Kernel Integration of Shared Memory (Next Major Release)
+Currently, the `ivshmem` contract is maintained by a userspace bridge (`shm_agent`). The immediate priority is to integrate this into the kernel driver.
+- [ ] Map the `ivshmem` PCI BAR directly within `vballoon_lab.ko`.
+- [ ] Implement a kernel-level worker thread to poll or interrupt-drive `cmd_seq` changes.
+- [ ] Retire the userspace `shm_agent` entirely to reduce context-switching overhead and secure the control plane.
 
-1. Kernel integration of shared-memory control
-- Replace userspace-only bridge logic with kernel-driver integration path.
-- Driver should consume target updates and publish actual/ack/error safely.
+## Phase 2: Host Policy Engine
+The host daemon currently accepts manual target inputs. We will introduce an adaptive policy engine to automate ballooning decisions.
+- [ ] **Telemetry Ingestion:** Parse host-side memory statistics (e.g., cgroups, PSI) to determine global memory pressure.
+- [ ] **Adaptive Bounds:** Implement configurable `min_target` and `max_target` limits per VM.
+- [ ] **Rate Limiting:** Prevent thrashing by implementing hysteresis and rate-limiting on target adjustments.
 
-2. Host daemon structure completion
-- Add a dedicated host policy module for target decisions (manual + scripted modes).
-- Implement `log.c` for structured event logs.
+## Phase 3: Reliability & Recovery Hardening
+Ensure the system gracefully handles component failures and restarts.
+- [ ] **Daemon Restart Recovery:** Allow `balloond` to crash and restart without losing synchronization with the guest (`cmd_seq` / `ack_seq` reconciliation).
+- [ ] **Stale Memory Detection:** Implement a heartbeat or timestamp mechanism in the shared memory struct to detect if the guest agent/driver has crashed.
 
-3. Reliability and recovery
-- Handle daemon restart, stale shared memory, and command replays.
-- Ensure idempotent command handling with `cmd_seq/ack_seq`.
+## Phase 4: Extended Observability
+Improve operational visibility for debugging and monitoring.
+- [ ] Export driver statistics via `sysfs` or `debugfs` (e.g., total pages inflated, deflation events triggered by pressure).
+- [ ] Integrate host daemon logs with standard Linux logging facilities (syslog/journald) via structured JSON outputs.
 
-4. Observability
-- Add status metrics and debug counters.
-- Improve test visibility in logs and docs.
-
-5. Memory-pressure and guide alignment
-- Add path toward pressure-aware behavior (stats + reaction hooks).
-- Prepare for shrinker/OOM/stat-style extensions.
-
-6. End-to-end testing matrix
-- Functional target transitions.
-- Repeated command stress.
-- Restart/recovery scenarios.
-- No crash/no leak criteria.
-
-## Deliverables
-- Updated driver + daemon code
-- Updated scripts
-- `tests/e2e.md`
-- `docs/STATUS.md`
-
+## Phase 5: vhost-user Integration
+Explore migrating the custom `ivshmem` transport to a standard `vhost-user` backend.
+- [ ] Evaluate the performance and complexity tradeoffs of implementing a `vhost-user-balloon` device in the host daemon.
+- [ ] Refactor the shared-memory protocol to conform to `vhost-user` message specifications if adopted.

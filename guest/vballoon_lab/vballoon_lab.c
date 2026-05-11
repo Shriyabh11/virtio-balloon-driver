@@ -374,6 +374,6 @@ static struct virtio_driver vb_driver = {
 
 module_virtio_driver(vb_driver);
 
-MODULE_DESCRIPTION("Plan-B virtio balloon lab driver (no /proc)");
+MODULE_DESCRIPTION("Virtio balloon lab driver with pressure-aware memory management");
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("You + Codex");
+MODULE_AUTHOR("Shriya Bharadwaj");

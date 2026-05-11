@@ -32,7 +32,7 @@ grep -q "actual=3221225472 target=3221225472" "${LOGD}"
 
 echo "[4/4] Save proofs"
 mkdir -p "${ROOT}/proofs"
-cp "${LOGI}" "${ROOT}/proofs/phase2_qmp_inflate_ok.log"
-cp "${LOGD}" "${ROOT}/proofs/phase2_qmp_deflate_ok.log"
+cp "${LOGI}" "${ROOT}/proofs/inflate_convergence.log"
+cp "${LOGD}" "${ROOT}/proofs/deflate_convergence.log"
 
-echo "smoke_phase2: completed (real QMP path)"
+echo "smoke test: completed (real QMP path)"

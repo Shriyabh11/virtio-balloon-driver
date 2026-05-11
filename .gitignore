@@ -27,3 +27,11 @@ PROJECT_INVENTORY.txt
 guest/shm_agent/shm_agent
 host/balloond/balloond
 host/balloond/src/*.o
+
+# Editor and IDE configurations
+*.swp
+*.swo
+.vscode/
+.idea/
+*.dSYM/
+compile_commands.json

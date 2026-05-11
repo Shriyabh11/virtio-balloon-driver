@@ -220,7 +220,7 @@ Guest module parameters:
 ## 6. End-user Documentation (How to Run)
 
 Primary runbook:
-- [DEMO_DOCUMENTATION.md](DEMO_DOCUMENTATION.md)
+- [docs/QEMU_TEST_GUIDE.md](docs/QEMU_TEST_GUIDE.md)
 
 Quick sequence:
 1. Start VM with `./scripts/run_qemu_phase3_ivshmem.sh`.
@@ -228,21 +228,21 @@ Quick sequence:
 3. Build/start guest `shm_agent` and verify process/log output.
 4. Run shared-memory contract logs and verify `ack_seq` progression.
 5. Disable pressure temporarily for deterministic smoke run.
-6. Run `./scripts/smoke_phase2.sh 2>&1 | tee proofs/phase3_pressure_run.log`.
+6. Run `./scripts/smoke_phase2.sh 2>&1 | tee proofs/full_smoke_run.log`.
 7. Re-enable pressure and capture pressure evidence logs.
 
 ## 7. Output and Proof Interpretation
 
 ## 7.1 Inflate/deflate convergence
-- [proofs/phase2_qmp_inflate_ok.log](proofs/phase2_qmp_inflate_ok.log)
-- [proofs/phase2_qmp_deflate_ok.log](proofs/phase2_qmp_deflate_ok.log)
+- [proofs/inflate_convergence.log](proofs/inflate_convergence.log)
+- [proofs/deflate_convergence.log](proofs/deflate_convergence.log)
 
 Expected:
 - inflate reaches `2147483648` bytes,
 - deflate reaches `3221225472` bytes.
 
 ## 7.2 Full smoke markers
-- [proofs/phase3_pressure_run.log](proofs/phase3_pressure_run.log)
+- [proofs/full_smoke_run.log](proofs/full_smoke_run.log)
 
 Expected markers:
 - `BEGIN INFLATE LOG`
@@ -250,19 +250,19 @@ Expected markers:
 - completion line.
 
 ## 7.3 Replay-safe behavior
-- [proofs/phaseB_replay_guard.log](proofs/phaseB_replay_guard.log)
+- [proofs/replay_guard_noop.log](proofs/replay_guard_noop.log)
 
 Expected signal:
 - unchanged target with no pending command -> publish skipped.
 
 ## 7.4 Pressure behavior
-- [proofs/phaseD_pressure_dmesg_fresh.log](proofs/phaseD_pressure_dmesg_fresh.log)
+- [proofs/pressure_deflate_dmesg.log](proofs/pressure_deflate_dmesg.log)
 
 Expected signal:
 - repeated `pressure deflate` lines.
 
 ## 7.5 ivshmem transport demonstration
-- [proofs/phaseC_ivshmem_transport_ok.log](proofs/phaseC_ivshmem_transport_ok.log)
+- [proofs/ivshmem_transport_proof.log](proofs/ivshmem_transport_proof.log)
 
 Expected:
 - host->guest marker match,
@@ -278,8 +278,6 @@ Expected:
 ## 9. Related Documents
 
 - [README.md](README.md)
-- [DEMO_DOCUMENTATION.md](DEMO_DOCUMENTATION.md)
-- [END_TO_END_REPORT.md](END_TO_END_REPORT.md)
 - [docs/STATUS.md](docs/STATUS.md)
 - [docs/PROTOCOL.md](docs/PROTOCOL.md)
 - [docs/QEMU_TEST_GUIDE.md](docs/QEMU_TEST_GUIDE.md)
